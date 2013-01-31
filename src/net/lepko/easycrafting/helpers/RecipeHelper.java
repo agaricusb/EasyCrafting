@@ -15,6 +15,8 @@ import net.minecraft.item.crafting.CraftingManager;
 import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.item.crafting.ShapedRecipes;
 import net.minecraft.item.crafting.ShapelessRecipes;
+import net.minecraft.item.crafting.RecipesArmorDyes;
+import net.minecraft.item.crafting.RecipesMapCloning;
 import net.minecraftforge.liquids.LiquidContainerData;
 import net.minecraftforge.liquids.LiquidContainerRegistry;
 import net.minecraftforge.oredict.OreDictionary;
@@ -52,8 +54,16 @@ public class RecipeHelper {
         for (int i = 0; i < mcRecipes.size(); i++) {
             IRecipe r = (IRecipe) mcRecipes.get(i);
             ArrayList ingredients = null;
+            if (r instanceof RecipesArmorDyes) {
+                // TODO
+                unknownRecipes.add(r);
+                continue;
+            } else if (r instanceof RecipesMapCloning) {
+                // TODO
+                unknownRecipes.add(r);
+                continue;
             // TODO: in future versions of forge you don't have to use reflections anymore, fields are exposed
-            if (r instanceof ShapedRecipes) {
+            } else if (r instanceof ShapedRecipes) {
                 ItemStack[] input = ReflectionHelper.<ItemStack[], ShapedRecipes> getPrivateValue(ShapedRecipes.class, (ShapedRecipes) r, 2);
                 ingredients = new ArrayList(Arrays.asList(input));
             } else if (r instanceof ShapelessRecipes) {
@@ -66,7 +76,7 @@ public class RecipeHelper {
                 List input = ReflectionHelper.<List, ShapelessOreRecipe> getPrivateValue(ShapelessOreRecipe.class, (ShapelessOreRecipe) r, 1);
                 ingredients = new ArrayList(input);
             } else {
-                // It's a special recipe (map extending, armor dyeing, ...) - ignore
+                // It's a special recipe (map extending, custom mod, ...) - ignore
                 // Add to list for mod compatibility handling
                 unknownRecipes.add(r);
                 continue;
