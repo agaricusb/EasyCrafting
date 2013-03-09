@@ -12,6 +12,12 @@ Official builds of the mod can be found [here](http://lepko.net/minecraft/).
 Official Minecraft Forum thread [here](http://www.minecraftforum.net/topic/1558714-).
 
 ### Contributing
+To build this mod, install [Maven](http://maven.apache.org/) and run:
+
+    mvn initialize -P -built
+    mvn package
+
+
 If you wish to submit a pull request to fix bugs or broken behavior feel free to do so. If you would like to add features or change existing behavior, please discuss it with me (Lepko) first.
 
 You can reach me at:
