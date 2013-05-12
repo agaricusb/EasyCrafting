@@ -1,55 +1,75 @@
 package net.lepko.easycrafting.modcompat;
 
+import ic2.api.item.ElectricItem;
+import ic2.api.item.ICustomElectricItem;
+import ic2.api.item.IElectricItem;
+
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Iterator;
+import java.util.List;
 
 import net.lepko.easycrafting.easyobjects.EasyItemStack;
 import net.lepko.easycrafting.easyobjects.EasyRecipe;
 import net.lepko.easycrafting.helpers.EasyLog;
 import net.lepko.easycrafting.helpers.RecipeHelper;
-import net.lepko.easycrafting.helpers.RecipeHelper.RecipeComparator;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.IRecipe;
-import cpw.mods.fml.common.Loader;
 
-public class ModCompatIC2 {
+public class ModCompatIC2 extends ModCompat {
 
-    public static boolean isModLoaded = false;
+    public ModCompatIC2() {
+        super("IC2");
+    }
 
-    public static void load() {
-        EasyLog.log("[ModCompat] [IC2] Checking for mod...");
-        if (!Loader.isModLoaded("IC2")) {
-            EasyLog.log("[ModCompat] [IC2] Mod not found.");
-            return;
-        }
-        EasyLog.log("[ModCompat] [IC2] Mod found. Loading...");
-        isModLoaded = true;
-
+    @Override
+    public void scanRecipes(List<IRecipe> recipes) {
         try {
             //
-            ArrayList<EasyRecipe> tmp = new ArrayList<EasyRecipe>();
-
-            Iterator<IRecipe> iterator = RecipeHelper.unknownRecipes.iterator();
+            Iterator<IRecipe> iterator = recipes.iterator();
             while (iterator.hasNext()) {
                 IRecipe r = iterator.next();
                 String className = r.getClass().getName();
                 if (className.equals("ic2.core.AdvRecipe") || className.equals("ic2.core.AdvShapelessRecipe")) {
                     Object[] input = (Object[]) Class.forName(className).getField("input").get(r);
-                    ArrayList ingredients = new ArrayList(Arrays.asList(input));
-                    tmp.add(new EasyRecipe(EasyItemStack.fromItemStack(r.getRecipeOutput()), ingredients));
+                    ArrayList<Object> ingredients = new ArrayList<Object>(Arrays.asList(input));
+                    RecipeHelper.scannedRecipes.add(new EasyRecipe(EasyItemStack.fromItemStack(r.getRecipeOutput()), ingredients));
                     iterator.remove();
                 }
             }
-
-            RecipeHelper.allRecipes.addAll(tmp);
-            Collections.sort(RecipeHelper.allRecipes, new RecipeComparator());
             //
         } catch (Exception e) {
-            EasyLog.warning("[ModCompat] [IC2] Exception.", e);
+            EasyLog.warning("[ModCompat] [" + modID + "] Exception while scanning recipes.", e);
             return;
         }
+    }
 
-        EasyLog.log("[ModCompat] [IC2] Loaded.");
+    public static boolean isElectric(ItemStack is) {
+        if (ModCompat.isLoaded("IC2") && is.getItem() instanceof IElectricItem) {
+            return true;
+        }
+        return false;
+    }
+
+    public static int charge(ItemStack is, int amount, int tier, boolean ignoreTransferLimit, boolean simulate) {
+        if (!isElectric(is)) {
+            return 0;
+        }
+        if (is.getItem() instanceof ICustomElectricItem) {
+            return ((ICustomElectricItem) is.getItem()).charge(is, amount, tier, ignoreTransferLimit, simulate);
+        } else {
+            return ElectricItem.charge(is, amount, tier, ignoreTransferLimit, simulate);
+        }
+    }
+
+    public static int discharge(ItemStack is, int amount, int tier, boolean ignoreTransferLimit, boolean simulate) {
+        if (!isElectric(is)) {
+            return 0;
+        }
+        if (is.getItem() instanceof ICustomElectricItem) {
+            return ((ICustomElectricItem) is.getItem()).discharge(is, amount, tier, ignoreTransferLimit, simulate);
+        } else {
+            return ElectricItem.discharge(is, amount, tier, ignoreTransferLimit, simulate);
+        }
     }
 }

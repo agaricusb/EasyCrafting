@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.concurrent.locks.ReentrantLock;
 
+import net.lepko.easycrafting.config.ConfigHandler;
 import net.lepko.easycrafting.easyobjects.EasyRecipe;
 import net.lepko.easycrafting.helpers.RecipeHelper.RecipeComparator;
 import net.lepko.easycrafting.proxy.Proxy;
@@ -24,12 +25,12 @@ public class RecipeWorker implements Runnable {
 
         InventoryPlayer player_inventory = FMLClientHandler.instance().getClient().thePlayer.inventory;
 
-        int maxRecursion = EasyConfig.instance().recipeRecursion.getInt(5);
+        int maxRecursion = ConfigHandler.MAX_RECURSION;
         ArrayList<EasyRecipe> tmp = RecipeHelper.getCraftableRecipes(player_inventory, maxRecursion, RecipeHelper.getAllRecipes());
         Collections.sort(tmp, new RecipeComparator());
 
         craftableRecipes = tmp;
-        EasyLog.log(String.format("%d/%d craftable | %.8f seconds", craftableRecipes.size(), RecipeHelper.getAllRecipes().size(), ((double) (System.nanoTime() - beforeTime) / 1000000000.0D)));
+        EasyLog.log(String.format("%d/%d craftable | %.8f seconds", craftableRecipes.size(), RecipeHelper.getAllRecipes().size(), (System.nanoTime() - beforeTime) / 1000000000.0D));
     }
 
     @Override
@@ -54,11 +55,11 @@ public class RecipeWorker implements Runnable {
     }
 
     public void requestNewRecipeList() {
-        this.requested = true;
+        requested = true;
     }
 
     public void setDisplayed() {
-        this.displayed = true;
+        displayed = true;
     }
 
     public ImmutableList<EasyRecipe> getCraftableRecipes() {

@@ -1,10 +1,17 @@
-package net.lepko.easycrafting.block;
+package net.lepko.easycrafting.inventory;
 
 import java.util.List;
 
+import net.lepko.easycrafting.block.SlotEasyCraftingOutput;
+import net.lepko.easycrafting.block.SlotInterceptor;
+import net.lepko.easycrafting.block.TileEntityEasyCrafting;
+import net.lepko.easycrafting.config.ConfigHandler;
 import net.lepko.easycrafting.easyobjects.EasyRecipe;
-import net.lepko.easycrafting.helpers.EasyConfig;
 import net.lepko.easycrafting.helpers.RecipeHelper;
+import net.lepko.easycrafting.inventory.gui.GuiEasyCrafting;
+import net.lepko.easycrafting.network.PacketHandler;
+import net.lepko.easycrafting.network.packet.EasyPacket;
+import net.lepko.easycrafting.network.packet.PacketEasyCrafting;
 import net.lepko.easycrafting.proxy.Proxy;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
@@ -16,41 +23,41 @@ import cpw.mods.fml.relauncher.SideOnly;
 
 public class ContainerEasyCrafting extends Container {
     protected TileEntityEasyCrafting tile_entity;
-    protected GuiEasyCrafting gui;
+    public GuiEasyCrafting gui;
 
     public ContainerEasyCrafting(TileEntityEasyCrafting tile_entity, InventoryPlayer player_inventory) {
 
         this.tile_entity = tile_entity;
         int offset2 = 5 * 18 + 4;
-        int offset = offset2 + (2 * 18) + 4;
-        int offset3 = offset + (3 * 18) + 5;
+        int offset = offset2 + 2 * 18 + 4;
+        int offset3 = offset + 3 * 18 + 5;
 
         int count = 0;
 
         // Crafting output slots
         for (int g = 0; g < 5; ++g) {
             for (int h = 0; h < 8; ++h) {
-                this.addSlotToContainer(new SlotEasyCraftingOutput(tile_entity, count++, 8 + h * 18, 18 + g * 18));
+                addSlotToContainer(new SlotEasyCraftingOutput(tile_entity, count++, 8 + h * 18, 18 + g * 18));
             }
         }
 
         // Table inventory slots
         for (int i = 0; i < 2; ++i) {
             for (int j = 0; j < 9; ++j) {
-                this.addSlotToContainer(new Slot(tile_entity, count++, 8 + j * 18, 18 + i * 18 + offset2));
+                addSlotToContainer(new Slot(tile_entity, count++, 8 + j * 18, 18 + i * 18 + offset2));
             }
         }
 
         // Player inventory
         for (int k = 0; k < 3; ++k) {
             for (int l = 0; l < 9; ++l) {
-                this.addSlotToContainer(new SlotInterceptor(player_inventory, l + k * 9 + 9, 8 + l * 18, 18 + k * 18 + offset));
+                addSlotToContainer(new SlotInterceptor(player_inventory, l + k * 9 + 9, 8 + l * 18, 18 + k * 18 + offset));
             }
         }
 
         // Player hotbar
         for (int m = 0; m < 9; ++m) {
-            this.addSlotToContainer(new SlotInterceptor(player_inventory, m, 8 + m * 18, 18 + offset3));
+            addSlotToContainer(new SlotInterceptor(player_inventory, m, 8 + m * 18, 18 + offset3));
         }
     }
 
@@ -91,7 +98,7 @@ public class ContainerEasyCrafting extends Container {
     @Override
     public ItemStack slotClick(int slot_index, int mouse_button, int modifier, EntityPlayer player) {
         if (slot_index >= 0 && inventorySlots.get(slot_index) instanceof SlotEasyCraftingOutput) {
-            return this.slotClickEasyCraftingOutput(slot_index, mouse_button, modifier, player);
+            return slotClickEasyCraftingOutput(slot_index, mouse_button, modifier, player);
         } else {
             return super.slotClick(slot_index, mouse_button, modifier, player);
         }
@@ -102,15 +109,15 @@ public class ContainerEasyCrafting extends Container {
             return null;
         }
 
-        if (this.gui == null) {
+        if (gui == null) {
             return null;
         }
 
-        if ((mouse_button != 0 && mouse_button != 1) || (modifier != 0 && modifier != 1)) {
+        if (mouse_button != 0 && mouse_button != 1 || modifier != 0 && modifier != 1) {
             return null;
         }
 
-        Slot clicked_slot = (Slot) this.inventorySlots.get(slot_index);
+        Slot clicked_slot = (Slot) inventorySlots.get(slot_index);
         if (clicked_slot == null) {
             return null;
         }
@@ -130,21 +137,22 @@ public class ContainerEasyCrafting extends Container {
         if (stack_in_hand == null) {
             return_stack = stack_in_slot.copy();
             return_size = stack_in_slot.stackSize;
-        } else if (stack_in_slot.itemID == stack_in_hand.itemID && stack_in_hand.getMaxStackSize() >= (stack_in_slot.stackSize + stack_in_hand.stackSize) && (!stack_in_slot.getHasSubtypes() || stack_in_slot.getItemDamage() == stack_in_hand.getItemDamage()) && ItemStack.areItemStackTagsEqual(stack_in_slot, stack_in_hand)) {
+        } else if (stack_in_slot.itemID == stack_in_hand.itemID && stack_in_hand.getMaxStackSize() >= stack_in_slot.stackSize + stack_in_hand.stackSize && (!stack_in_slot.getHasSubtypes() || stack_in_slot.getItemDamage() == stack_in_hand.getItemDamage()) && ItemStack.areItemStackTagsEqual(stack_in_slot, stack_in_hand)) {
             return_stack = stack_in_slot.copy();
             return_size = stack_in_slot.stackSize + stack_in_hand.stackSize;
         }
 
         if (return_stack != null) {
-            EasyRecipe recipe = RecipeHelper.getValidRecipe(this.gui, slot_index, return_stack);
+            EasyRecipe recipe = RecipeHelper.getValidRecipe(gui, slot_index, return_stack);
             if (recipe != null) {
-                int identifier = mouse_button == 0 ? 1 : 2;
+                boolean isRightClick = mouse_button != 0;
 
-                Proxy.proxy.sendEasyCraftingPacketToServer(identifier, recipe);
+                EasyPacket packet = new PacketEasyCrafting(recipe, isRightClick);
+                PacketHandler.sendPacket(packet);
 
-                if (identifier == 2) { // Right click; craft until max stack
+                if (isRightClick) { // Right click; craft until max stack
                     int maxTimes = RecipeHelper.calculateCraftingMultiplierUntilMaxStack(stack_in_slot, stack_in_hand);
-                    int timesCrafted = RecipeHelper.canCraft(recipe, player.inventory, RecipeHelper.getAllRecipes(), false, maxTimes, EasyConfig.instance().recipeRecursion.getInt(5));
+                    int timesCrafted = RecipeHelper.canCraft(recipe, player.inventory, RecipeHelper.getAllRecipes(), false, maxTimes, ConfigHandler.MAX_RECURSION);
                     if (timesCrafted > 0) {
                         return_stack.stackSize = return_size + (timesCrafted - 1) * stack_in_slot.stackSize;
                         player.inventory.setItemStack(return_stack);

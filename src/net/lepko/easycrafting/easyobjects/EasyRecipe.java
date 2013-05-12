@@ -8,7 +8,7 @@ import net.minecraft.item.ItemStack;
 
 public class EasyRecipe {
 
-    private ArrayList ingredients;
+    private ArrayList<Object> ingredients;
     private EasyItemStack result;
 
     /**
@@ -20,7 +20,7 @@ public class EasyRecipe {
      * @param result - EasyItemStack representation of the crafting result
      * @param ingredients - and ArrayList of ingredients
      */
-    public EasyRecipe(EasyItemStack result, ArrayList ingredients) {
+    public EasyRecipe(EasyItemStack result, ArrayList<Object> ingredients) {
         this.result = result;
         ingredients.removeAll(Collections.singleton(null));
         this.ingredients = ingredients;
@@ -38,9 +38,9 @@ public class EasyRecipe {
         }
         Object o = ingredients.get(index);
         if (o instanceof EasyItemStack) {
-            return (EasyItemStack) o;
+            return o;
         } else if (o instanceof ArrayList) {
-            return (ArrayList<ItemStack>) o;
+            return o;
         } else if (o instanceof ItemStack) {
             EasyItemStack eis = EasyItemStack.fromItemStack((ItemStack) o);
             ingredients.set(index, eis);
@@ -69,5 +69,64 @@ public class EasyRecipe {
      */
     public EasyItemStack getResult() {
         return result;
+    }
+
+    /**
+     * Get a list of ingredients with sized itemstacks instead of duplicate entries.
+     * 
+     * @return list of ingredients
+     */
+    public ArrayList<ItemStack> getCompactIngredientList() {
+
+        ArrayList<ItemStack> list = new ArrayList<ItemStack>();
+
+        if (result.usedIngredients == null) {
+            ingredients: for (int i = 0; i < ingredients.size(); i++) {
+                Object o = getIngredient(i);
+
+                EasyItemStack eis = null;
+                if (o instanceof EasyItemStack) {
+                    eis = (EasyItemStack) o;
+                } else if (o instanceof ArrayList) {
+                    @SuppressWarnings("unchecked")
+                    ArrayList<ItemStack> list2 = (ArrayList<ItemStack>) o;
+                    if (list2.isEmpty()) {
+                        // Missing Ingredient, can't craft
+                        return null;
+                    }
+                    eis = EasyItemStack.fromItemStack(list2.get(0));
+                } else {
+                    // Invalid ingredient, can't craft
+                    return null;
+                }
+
+                for (ItemStack is2 : list) {
+                    if (eis.equalsItemStack(is2, true)) {
+                        is2.stackSize++;
+                        continue ingredients;
+                    }
+                }
+
+                // Some recipes use larger stack sizes in their recipes
+                ItemStack is = eis.toItemStack();
+                is.stackSize = 1;
+                list.add(is);
+            }
+        } else {
+            used: for (ItemStack is : result.usedIngredients) {
+                EasyItemStack eis = EasyItemStack.fromItemStack(is);
+
+                for (ItemStack is2 : list) {
+                    if (eis.equalsItemStack(is2, true)) {
+                        is2.stackSize++;
+                        continue used;
+                    }
+                }
+
+                list.add(eis.toItemStack());
+            }
+        }
+
+        return list;
     }
 }

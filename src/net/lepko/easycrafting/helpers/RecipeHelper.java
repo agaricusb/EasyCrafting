@@ -6,10 +6,12 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-import net.lepko.easycrafting.block.GuiEasyCrafting;
 import net.lepko.easycrafting.easyobjects.EasyItemStack;
 import net.lepko.easycrafting.easyobjects.EasyRecipe;
+import net.lepko.easycrafting.handlers.ModCompatibilityHandler;
+import net.lepko.easycrafting.inventory.gui.GuiEasyCrafting;
 import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.crafting.CraftingManager;
 import net.minecraft.item.crafting.IRecipe;
@@ -29,62 +31,57 @@ import cpw.mods.fml.relauncher.SideOnly;
 
 public class RecipeHelper {
 
-    public static ArrayList<EasyRecipe> allRecipes = new ArrayList<EasyRecipe>();
-    public static ArrayList<IRecipe> unknownRecipes = new ArrayList<IRecipe>();
+    private static int lastRecipeListSize = 0;
+    public static List<EasyRecipe> scannedRecipes = new ArrayList<EasyRecipe>();
+
+    public static void checkForNewRecipes() {
+        @SuppressWarnings("unchecked")
+        List<IRecipe> recipes = CraftingManager.getInstance().getRecipeList();
+
+        if (lastRecipeListSize < recipes.size()) {
+            List<IRecipe> newRecipes = new ArrayList<IRecipe>();
+            for (int i = lastRecipeListSize; i < recipes.size(); i++) {
+                newRecipes.add(recipes.get(i));
+            }
+            lastRecipeListSize = recipes.size();
+            scanRecipes(newRecipes);
+        }
+    }
+
+    public static void scanRecipes(List<IRecipe> recipes) {
+        long beforeTime = System.nanoTime();
+        int size = recipes.size();
+        //
+
+        ModCompatibilityHandler.scanRecipes(recipes);
+
+        ArrayList<EasyRecipe> tmp = new ArrayList<EasyRecipe>();
+
+        for (IRecipe r : recipes) {
+            ArrayList<Object> ingredients = RecipeHelper.getIngredientList(r);
+            if (ingredients != null && r.getRecipeOutput() != null) {
+                if (Item.itemsList[r.getRecipeOutput().itemID] != null) {
+                    tmp.add(new EasyRecipe(EasyItemStack.fromItemStack(r.getRecipeOutput()), ingredients));
+                } else {
+                    EasyLog.warning("Invalid Recipe Output for " + r.getClass().getName() + ". Item with ID " + r.getRecipeOutput().itemID + " is null!");
+                }
+            } else {
+                EasyLog.log("Unknown Recipe: " + r.getClass().getName());
+            }
+        }
+
+        scannedRecipes.addAll(tmp);
+        Collections.sort(scannedRecipes, new RecipeComparator());
+
+        //
+        EasyLog.log(String.format("Scanned %d new recipes in %.8f seconds", size, (System.nanoTime() - beforeTime) / 1000000000.0D));
+    }
 
     /**
      * Get a list of all recipes that are scanned and available. If recipes are not yet scanned it will return an empty list.
      */
     public static ImmutableList<EasyRecipe> getAllRecipes() {
-        return ImmutableList.copyOf(allRecipes);
-    }
-
-    /**
-     * Scan, convert, sort and store the recognised recipes. To access the recipes use {@link #getAllRecipes()}.
-     */
-    public static void scanRecipes() {
-        long beforeTime = System.nanoTime();
-
-        List mcRecipes = CraftingManager.getInstance().getRecipeList();
-        ArrayList<EasyRecipe> tmp = new ArrayList<EasyRecipe>();
-        int skipped = 0;
-
-        for (int i = 0; i < mcRecipes.size(); i++) {
-            IRecipe r = (IRecipe) mcRecipes.get(i);
-            ArrayList ingredients = null;
-            // TODO: in future versions of forge you don't have to use reflections anymore, fields are exposed
-            if (r instanceof ShapedRecipes) {
-                ItemStack[] input = ReflectionHelper.<ItemStack[], ShapedRecipes> getPrivateValue(ShapedRecipes.class, (ShapedRecipes) r, 2);
-                ingredients = new ArrayList(Arrays.asList(input));
-            } else if (r instanceof ShapelessRecipes) {
-                List input = ReflectionHelper.<List, ShapelessRecipes> getPrivateValue(ShapelessRecipes.class, (ShapelessRecipes) r, 1);
-                ingredients = new ArrayList(input);
-            } else if (r instanceof ShapedOreRecipe) {
-                Object[] input = ReflectionHelper.<Object[], ShapedOreRecipe> getPrivateValue(ShapedOreRecipe.class, (ShapedOreRecipe) r, 3);
-                ingredients = new ArrayList(Arrays.asList(input));
-            } else if (r instanceof ShapelessOreRecipe) {
-                List input = ReflectionHelper.<List, ShapelessOreRecipe> getPrivateValue(ShapelessOreRecipe.class, (ShapelessOreRecipe) r, 1);
-                ingredients = new ArrayList(input);
-            } else {
-                // It's a special recipe (map extending, armor dyeing, ...) - ignore
-                // Add to list for mod compatibility handling
-                unknownRecipes.add(r);
-                continue;
-            }
-            if (r.getRecipeOutput() == null) {
-                // CraftBukkit compatibility - armor dyes, map clone are ShapelessRecipes, with null output
-                unknownRecipes.add(r);
-                continue;
-            }
-
-
-            tmp.add(new EasyRecipe(EasyItemStack.fromItemStack(r.getRecipeOutput()), ingredients));
-        }
-
-        allRecipes.addAll(tmp);
-        Collections.sort(allRecipes, new RecipeComparator());
-
-        EasyLog.log(String.format("Scanned %d recipes in %.8f seconds", allRecipes.size(), ((double) (System.nanoTime() - beforeTime) / 1000000000.0D)));
+        return ImmutableList.copyOf(scannedRecipes);
     }
 
     /**
@@ -186,10 +183,10 @@ public class RecipeHelper {
                         continue iiLoop;
                     }
                     //
-                    if (recipesToCheck != null && (recursion - 1) >= 0) {
+                    if (recipesToCheck != null && recursion - 1 >= 0) {
                         ArrayList<EasyRecipe> list = getRecipesForItemFromList(ingredient, recipesToCheck);
                         for (EasyRecipe er : list) {
-                            if (canCraft(er, tmp, recipesToCheck, true, 1, (recursion - 1)) > 0) {
+                            if (canCraft(er, tmp, recipesToCheck, true, 1, recursion - 1) > 0) {
                                 ItemStack is = er.getResult().toItemStack();
                                 is.stackSize--;
                                 if (is.stackSize > 0 && !tmp.addItemStackToInventory(is)) {
@@ -205,16 +202,17 @@ public class RecipeHelper {
                     //
                     break timesLoop;
                 } else if (recipe.getIngredient(ii) instanceof ArrayList) {
+                    @SuppressWarnings("unchecked")
                     ArrayList<ItemStack> ingredients = (ArrayList<ItemStack>) recipe.getIngredient(ii);
                     int inventoryIndex = InventoryHelper.isItemInInventory(tmp, ingredients);
                     if (inventoryIndex != -1 && InventoryHelper.consumeItemForCrafting(tmp, inventoryIndex, usedIngredients)) {
                         continue iiLoop;
                     }
                     //
-                    if (recipesToCheck != null && (recursion - 1) >= 0) {
+                    if (recipesToCheck != null && recursion - 1 >= 0) {
                         ArrayList<EasyRecipe> list = getRecipesForItemFromList(ingredients, recipesToCheck);
                         for (EasyRecipe er : list) {
-                            if (canCraft(er, tmp, recipesToCheck, true, 1, (recursion - 1)) > 0) {
+                            if (canCraft(er, tmp, recipesToCheck, true, 1, recursion - 1) > 0) {
                                 ItemStack is = er.getResult().toItemStack();
                                 is.stackSize--;
                                 if (is.stackSize > 0 && !tmp.addItemStackToInventory(is)) {
@@ -236,10 +234,11 @@ public class RecipeHelper {
             tmp2.copyInventory(tmp);
         }
 
-        recipe.getResult().setCharge(usedIngredients);
-
-        if (take && timesCrafted > 0) {
-            inventory.copyInventory(tmp2);
+        if (timesCrafted > 0) {
+            recipe.getResult().setCharge(usedIngredients);
+            if (take) {
+                inventory.copyInventory(tmp2);
+            }
         }
         return timesCrafted;
     }
@@ -263,7 +262,7 @@ public class RecipeHelper {
     /**
      * Same as {@link #getRecipesForItemFromList(EasyItemStack, ImmutableList)} but for any of the items contained in the list.
      * 
-     * @param ingredients - a list itemstacks
+     * @param ingredients - a list of itemstacks
      * @param recipesToCheck - a list of recipes to be checked
      */
     private static ArrayList<EasyRecipe> getRecipesForItemFromList(ArrayList<ItemStack> ingredients, ImmutableList<EasyRecipe> recipesToCheck) {
@@ -279,23 +278,35 @@ public class RecipeHelper {
      * 
      * @param result
      * @param ingredients
-     * @return the mached EasyRecipe instance, null if none of the recipes match
+     * @return the matched EasyRecipe instance, null if none of the recipes match
      */
     public static EasyRecipe getValidRecipe(EasyItemStack result, ItemStack[] ingredients) {
         ImmutableList<EasyRecipe> all = getAllRecipes();
         allLoop: for (EasyRecipe r : all) {
             if (r.getResult().equals(result) && r.getIngredientsSize() == ingredients.length) {
-                for (int j = 0; j < r.getIngredientsSize(); j++) {
+                ingLoop: for (int j = 0; j < r.getIngredientsSize(); j++) {
                     if (r.getIngredient(j) instanceof EasyItemStack) {
                         EasyItemStack eis = (EasyItemStack) r.getIngredient(j);
                         if (!eis.equalsItemStack(ingredients[j])) {
                             continue allLoop;
                         }
-                    } else if (r.getIngredient(j) instanceof ArrayList) {
-                        if (ingredients[j].itemID != -1) {
-                            // TODO: check against oredict
-                            continue allLoop;
+                    } else if (r.getIngredient(j) instanceof List) {
+                        if (ingredients[j].itemID == 0) {
+                            return null;
                         }
+                        @SuppressWarnings("rawtypes")
+                        List ingList = (List) r.getIngredient(j);
+                        if (ingList.isEmpty()) {
+                            return null;
+                        }
+                        for (Object is : ingList) {
+                            if (is instanceof ItemStack) {
+                                if (EasyItemStack.fromItemStack((ItemStack) is).equalsItemStack(ingredients[j])) {
+                                    continue ingLoop;
+                                }
+                            }
+                        }
+                        continue allLoop;
                     }
                 }
                 return r;
@@ -311,12 +322,11 @@ public class RecipeHelper {
      * @param inHand itemstack currently in hand
      */
     public static int calculateCraftingMultiplierUntilMaxStack(ItemStack result, ItemStack inHand) {
-        // TODO: there has to be a better way to calculate this
         int maxTimes = (int) ((double) result.getMaxStackSize() / (double) result.stackSize);
         if (inHand != null) {
-            int diff = result.getMaxStackSize() - (maxTimes * result.stackSize);
+            int diff = result.getMaxStackSize() - maxTimes * result.stackSize;
             if (inHand.stackSize > diff) {
-                maxTimes -= (int) (((double) (inHand.stackSize - diff) / (double) result.stackSize) + 1);
+                maxTimes -= (int) ((double) (inHand.stackSize - diff) / (double) result.stackSize + 1);
             }
         }
         return maxTimes;
@@ -328,10 +338,10 @@ public class RecipeHelper {
     @SideOnly(Side.CLIENT)
     public static EasyRecipe getValidRecipe(GuiEasyCrafting gui, int slot_index, ItemStack result) {
         // TODO: find a better way
-        int recipe_index = slot_index + (gui.currentScroll * 8);
+        int recipe_index = slot_index + gui.currentScroll * 8;
         if (recipe_index >= 0 && gui.renderList != null && recipe_index < gui.renderList.size()) {
             EasyRecipe r = gui.renderList.get(recipe_index);
-            if (r.getResult().equalsItemStack(result) && gui.craftableList.contains(r)) {
+            if (r.getResult().equalsItemStack(result) && gui.craftableList != null && gui.craftableList.contains(r)) {
                 return r;
             }
         }
@@ -339,9 +349,11 @@ public class RecipeHelper {
     }
 
     /**
-     *  
+     * Resolves the provided string to a list of itemstacks by querying the ore dictionary. Also handles liquid containers from IC2 recipes.
+     * 
+     * @param string - name of the ore dictionary entry to resolve
+     * @return a list of itemstacks registered under the provided name
      */
-    // TODO: javadoc
     public static ArrayList<ItemStack> resolveOreAndLiquidDictionaries(String string) {
         if (string.startsWith("liquid$")) {
             ArrayList<ItemStack> result = new ArrayList<ItemStack>();
@@ -363,7 +375,7 @@ public class RecipeHelper {
             }
 
             for (LiquidContainerData data : LiquidContainerRegistry.getRegisteredLiquidContainerData()) {
-                if ((data.stillLiquid.itemID == id) && ((meta == -1) || (data.stillLiquid.itemMeta == meta))) {
+                if (data.stillLiquid.itemID == id && (meta == -1 || data.stillLiquid.itemMeta == meta)) {
                     result.add(data.filled);
                 }
             }
@@ -399,5 +411,35 @@ public class RecipeHelper {
             }
             return 0;
         }
+    }
+
+    /**
+     * Get list of ingredients from the provided recipe.
+     * 
+     * @param recipe - object instance implementing IRecipe interface
+     * @return ArrayList of ingredients or null if not a valid recipe
+     */
+    @SuppressWarnings({ "rawtypes", "unchecked" })
+    public static ArrayList<Object> getIngredientList(IRecipe recipe) {
+        ArrayList ingredients = null;
+        // vanilla recipe classes
+        if (recipe instanceof ShapedRecipes) {
+            ingredients = new ArrayList(Arrays.asList(((ShapedRecipes) recipe).recipeItems));
+        } else if (recipe instanceof ShapelessRecipes) {
+            ingredients = new ArrayList(((ShapelessRecipes) recipe).recipeItems);
+        }
+        // ore dictionary classes
+        else if (recipe instanceof ShapedOreRecipe) {
+            Object[] input = ReflectionHelper.<Object[], ShapedOreRecipe> getPrivateValue(ShapedOreRecipe.class, (ShapedOreRecipe) recipe, 3);
+            ingredients = new ArrayList(Arrays.asList(input));
+        } else if (recipe instanceof ShapelessOreRecipe) {
+            List input = ReflectionHelper.<List, ShapelessOreRecipe> getPrivateValue(ShapelessOreRecipe.class, (ShapelessOreRecipe) recipe, 1);
+            ingredients = new ArrayList(input);
+        }
+        // remove all null elements
+        if (ingredients != null) {
+            ingredients.removeAll(Collections.singleton(null));
+        }
+        return ingredients;
     }
 }
