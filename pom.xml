@@ -2,14 +2,14 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>net.lepko</groupId>
   <artifactId>EasyCrafting</artifactId>
-  <version>1.1.3x</version>
+  <version>1.1.5x</version>
   <name>EasyCrafting</name>
   <url>https://github.com/LepkoQQ/EasyCrafting</url>
 
   <parent>
     <groupId>net.md-5</groupId>
     <artifactId>ForgeMod</artifactId>
-    <version>1.4.7-6.6.2.534-R2</version>
+    <version>1.5.1-7.7.2-SNAPSHOT</version>
   </parent>
 
   <build>
